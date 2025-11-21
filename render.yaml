@@ -3,19 +3,14 @@ services:
     name: scrapai-api
     env: python
     plan: free
-    buildCommand: |
-      pip install fastapi uvicorn beautifulsoup4 requests python-telegram-bot python-multipart
+    buildCommand: pip install -r requirements.txt
     startCommand: python backend/main.py
-    envVars:
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false
 
   - type: worker
     name: scrapai-telegram
     env: python
     plan: free
-    buildCommand: |
-      pip install fastapi uvicorn beautifulsoup4 requests python-telegram-bot python-multipart
+    buildCommand: pip install -r requirements.txt
     startCommand: python telegram_bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN

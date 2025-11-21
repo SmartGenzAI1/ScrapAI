@@ -1,78 +1,60 @@
 import asyncio
 import time
-from backend.scraper.crawler import SmartCrawler
+from backend.scraper.minimal_crawler import MinimalCrawler
 from backend.database.client import DatabaseClient
 from backend.config import config
 
 class CrawlerWorker:
     def __init__(self):
-        self.crawler = SmartCrawler()
+        self.crawler = MinimalCrawler()
         self.db = DatabaseClient()
         
     async def process_queue(self):
-        """Simple queue processor"""
-        print("🕷️ Crawler worker started...")
+        print("🚀 Minimal crawler started...")
         
         while True:
             try:
-                # Get next URL from queue
                 queue_item = await self.db.get_next_queue_item()
                 if not queue_item:
-                    print("⏳ No URLs in queue, waiting...")
                     await asyncio.sleep(10)
                     continue
                     
                 url = queue_item['url']
-                print(f"🔗 Processing: {url}")
+                print(f"📡 Crawling: {url}")
                 
-                # Check robots.txt
-                if not self.crawler.can_fetch(url):
-                    print(f"🚫 Blocked by robots.txt: {url}")
-                    await self.db.mark_queue_failed(queue_item['id'], "Blocked by robots.txt")
-                    continue
-                    
                 # Fetch content
-                html = await self.crawler.render_js_page(url)
+                html = self.crawler.fetch_page(url)
                 
                 if not html:
-                    print(f"❌ Failed to fetch: {url}")
-                    await self.db.mark_queue_failed(queue_item['id'], "Failed to fetch content")
+                    await self.db.mark_queue_failed(queue_item['id'], "Failed to fetch")
                     continue
                     
                 # Extract content
                 content_data = self.crawler.extract_content(html, url)
                 
-                # Skip if no meaningful content
-                if not content_data.get('content') or len(content_data['content'].split()) < 10:
-                    print(f"📄 No meaningful content: {url}")
-                    await self.db.mark_queue_failed(queue_item['id'], "No meaningful content")
-                    continue
-                
-                # Check for duplicates
-                if await self.db.is_duplicate(content_data['content_hash']):
-                    print(f"♻️ Duplicate content: {url}")
-                    await self.db.mark_queue_processed(queue_item['id'], "Duplicate")
+                if not content_data.get('content'):
+                    await self.db.mark_queue_failed(queue_item['id'], "No content")
                     continue
                     
-                # Save to database
+                # Save page
                 page_data = {
                     'url': url,
                     'title': content_data['title'],
                     'content': content_data['content'],
-                    'content_hash': content_data['content_hash']
+                    'hash': content_data['hash']
                 }
                 
-                page_id = await self.db.save_page(page_data)
+                await self.db.save_page(page_data)
                 await self.db.mark_queue_processed(queue_item['id'], "Success")
                 
-                print(f"✅ Successfully scraped: {url} ({len(content_data['content'])} chars)")
+                print(f"✅ Saved: {url}")
                 
-                # Be polite - rate limiting
-                await asyncio.sleep(config.crawler.request_delay)
+                # Rate limit
+                time.sleep(config.crawler.request_delay)
                 
             except Exception as e:
-                print(f"💥 Worker error: {str(e)}")
-                await asyncio.sleep(30)
+                print(f"❌ Error: {e}")
+                await asyncio.sleep(10)
 
 if __name__ == "__main__":
     worker = CrawlerWorker()

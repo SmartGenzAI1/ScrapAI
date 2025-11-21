@@ -42,3 +42,13 @@ async def delete_page(page_id: str):
         return {"message": "Page deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+# Add to backend/api/routes.py
+
+@router.get("/stats")
+async def get_stats():
+    """Get scraping statistics"""
+    try:
+        stats = await db.get_stats()
+        return stats
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

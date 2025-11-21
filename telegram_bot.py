@@ -1,12 +1,14 @@
-# In telegram_bot.py - remove aiohttp, use requests
-import requests
 import os
+import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+# Get config from environment
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Use your ACTUAL Render URL - replace with your exact URL
+API_URL = "https://scrapai-2.onrender.com"  # ⚠️ CHANGE THIS TO YOUR EXACT URL
 
-class ScrapAIBot:
+class SimpleScrapAIBot:
     def __init__(self, token: str):
         self.app = Application.builder().token(token).build()
         self.setup_handlers()
@@ -19,62 +21,76 @@ class ScrapAIBot:
         
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
-            "🤖 Scrap AI Bot\n\n"
+            "🤖 Scrap AI Bot - NOW WORKING!\n\n"
             "Commands:\n"
-            "/crawl <url> - Scrape website\n"
+            "/crawl <url> - Scrape a website\n"
             "/stats - Show status\n"
             "/help - Get help"
         )
         
     async def crawl_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not context.args:
-            await update.message.reply_text("Usage: /crawl https://example.com")
+            await update.message.reply_text("❌ Please provide a URL. Example: /crawl https://example.com")
             return
             
         url = context.args[0]
         
         try:
-            response = requests.post(f"{API_URL}/api/v1/crawl", json={"urls": [url]})
+            print(f"🔄 Attempting to call API: {API_URL}/api/v1/crawl")
+            response = requests.post(
+                f"{API_URL}/api/v1/crawl", 
+                json=[url],
+                timeout=30  # Add timeout
+            )
+            print(f"📡 API Response: {response.status_code}")
+            
             if response.status_code == 200:
-                await update.message.reply_text(f"✅ Queued: {url}")
+                await update.message.reply_text(f"✅ URL queued: {url}")
             else:
-                await update.message.reply_text("❌ Failed to queue URL")
+                await update.message.reply_text(f"❌ API returned {response.status_code}")
         except Exception as e:
-            await update.message.reply_text(f"❌ Error: {e}")
+            error_msg = f"❌ Error connecting to API: {str(e)}"
+            print(error_msg)
+            await update.message.reply_text(error_msg)
             
     async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            response = requests.get(f"{API_URL}/api/v1/stats")
+            print(f"🔄 Getting stats from: {API_URL}/api/v1/stats")
+            response = requests.get(f"{API_URL}/api/v1/stats", timeout=30)
+            print(f"📊 Stats response: {response.status_code}")
+            
             if response.status_code == 200:
                 stats = response.json()
                 await update.message.reply_text(
                     f"📊 Stats:\n"
-                    f"Pages: {stats['pages']}\n"
-                    f"Queued: {stats['queued']}\n"
-                    f"Processed: {stats['processed']}"
+                    f"Pages scraped: {stats.get('pages', 0)}\n"
+                    f"URLs queued: {stats.get('queued', 0)}\n"
+                    f"Total URLs: {stats.get('total', 0)}"
                 )
             else:
-                await update.message.reply_text("❌ Could not get stats")
+                await update.message.reply_text(f"❌ Stats API returned {response.status_code}")
         except Exception as e:
-            await update.message.reply_text(f"❌ Error: {e}")
+            error_msg = f"❌ Error getting stats: {str(e)}"
+            print(error_msg)
+            await update.message.reply_text(error_msg)
             
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Help:\n"
-            "- /crawl <url> - Scrape website\n"
+            "- /crawl <url> - Scrape a website\n"
             "- /stats - Show statistics\n"
-            "- Works with most simple websites"
+            "- /start - Show welcome message"
         )
         
     def run(self):
-        print("🤖 Telegram bot running...")
+        print(f"🤖 Telegram bot starting...")
+        print(f"🌐 API URL: {API_URL}")
         self.app.run_polling()
 
 if __name__ == "__main__":
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        print("❌ Missing TELEGRAM_BOT_TOKEN")
+    if not TELEGRAM_BOT_TOKEN:
+        print("❌ Missing TELEGRAM_BOT_TOKEN environment variable")
         exit(1)
         
-    bot = ScrapAIBot(token)
+    bot = SimpleScrapAIBot(TELEGRAM_BOT_TOKEN)
     bot.run()

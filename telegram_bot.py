@@ -174,3 +174,31 @@ class ScrapAIBot:
 if __name__ == "__main__":
     bot = ScrapAIBot()
     bot.run()
+# Add to telegram_bot.py in ScrapAIBot class
+
+async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show scraping statistics"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(f"{API_URL}/api/v1/stats") as response:
+                if response.status == 200:
+                    stats = await response.json()
+                    
+                    stats_text = f"""
+📊 **Scrap AI Statistics**
+
+📄 **Scraped Pages:** {stats.get('scraped_pages', 0)}
+⏳ **Queued URLs:** {stats.get('queued_urls', 0)}
+✅ **Processed URLs:** {stats.get('processed_urls', 0)}
+🔗 **Total URLs:** {stats.get('total_urls', 0)}
+
+💾 **Storage:** In-Memory (resets on restart)
+                    """
+                    await update.message.reply_text(stats_text, parse_mode='Markdown')
+                else:
+                    await update.message.reply_text("❌ Could not fetch statistics")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+# Add to setup_handlers:
+self.app.add_handler(CommandHandler("stats", self.stats_command))

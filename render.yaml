@@ -1,0 +1,38 @@
+services:
+  - type: web
+    name: scrapai-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/main.py
+    envVars:
+      - key: SUPABASE_URL
+        fromDatabase:
+          name: scrapai-db
+          property: connection_string
+      - key: SUPABASE_KEY
+        fromDatabase:
+          name: scrapai-db
+          property: api_key
+
+  - type: worker
+    name: scrapai-crawler
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python workers/crawler_worker.py
+    envVars:
+      - key: SUPABASE_URL
+        fromDatabase:
+          name: scrapai-db
+          property: connection_string
+
+  - type: worker
+    name: scrapai-telegram
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python telegram_bot.py
+    envVars:
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false

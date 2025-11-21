@@ -1,43 +1,29 @@
-import os
-from supabase import create_client
-from backend.database.models import ScrapedPage, CrawlQueue
-from backend.config import config
+from .memory_client import MemoryClient
 
 class DatabaseClient:
     def __init__(self):
-        self.client = create_client(config.database.url, config.database.key)
+        self.client = MemoryClient()
         
     async def add_to_queue(self, url: str):
-        return self.client.table('crawl_queue').insert({'url': url}).execute()
+        return await self.client.add_to_queue(url)
         
     async def get_next_queue_item(self):
-        result = self.client.table('crawl_queue')\
-            .select('*')\
-            .eq('status', 'queued')\
-            .order('scheduled_at')\
-            .limit(1)\
-            .execute()
-        return result.data[0] if result.data else None
+        return await self.client.get_next_queue_item()
         
     async def save_page(self, data: dict):
-        return self.client.table('scraped_pages').insert(data).execute()
+        return await self.client.save_page(data)
         
     async def is_duplicate(self, content_hash: str):
-        result = self.client.table('scraped_pages')\
-            .select('id')\
-            .eq('content_hash', content_hash)\
-            .execute()
-        return len(result.data) > 0
+        return await self.client.is_duplicate(content_hash)
         
     async def mark_queue_processed(self, queue_id: str, status: str):
-        return self.client.table('crawl_queue')\
-            .update({'status': status})\
-            .eq('id', queue_id)\
-            .execute()
-        # backend/database/client.py - MISSING
-class DatabaseClient:
-    async def add_to_queue(self, url): pass
-    async def get_next_queue_item(self): pass
-    async def save_page(self, data): pass
-    async def search_content(self, query): pass
-    # All database operations are undefined
+        return await self.client.mark_queue_processed(queue_id, status)
+        
+    async def search_content(self, query: str, limit: int = 10):
+        return await self.client.search_content(query, limit)
+        
+    async def get_pages(self, skip: int = 0, limit: int = 50):
+        return await self.client.get_pages(skip, limit)
+        
+    async def get_stats(self):
+        return await self.client.get_stats()

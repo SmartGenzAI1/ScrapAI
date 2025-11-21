@@ -3,9 +3,7 @@ services:
     name: scrapai-api
     env: python
     plan: free
-    buildCommand: |
-      pip install -r requirements.txt
-      python -m playwright install chromium
+    buildCommand: pip install -r requirements.txt
     startCommand: python backend/main.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
@@ -15,9 +13,7 @@ services:
     name: scrapai-telegram
     env: python
     plan: free
-    buildCommand: |
-      pip install -r requirements.txt
-      python -m playwright install chromium
+    buildCommand: pip install -r requirements.txt
     startCommand: python telegram_bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN

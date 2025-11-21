@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    volumes:
+      - ./chroma_db:/app/chroma_db
+    command: python backend/main.py
+
+  crawler-worker:
+    build: .
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    volumes:
+      - ./chroma_db:/app/chroma_db
+    command: python workers/crawler_worker.py
+    depends_on:
+      - api
+
+  embedding-worker:
+    build: .
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+    volumes:
+      - ./chroma_db:/app/chroma_db
+    command: python workers/embedding_worker.py
+    depends_on:
+      - api
+
+  # Optional: Add Redis for queue management in production
+  # redis:
+  #   image: redis:alpine
+  #   ports:
+  #     - "6379:6379"

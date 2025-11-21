@@ -4,8 +4,7 @@ services:
     env: python
     plan: free
     buildCommand: |
-      python -m pip install --upgrade pip
-      pip install --use-deprecated=legacy-resolver -r requirements.txt
+      pip install fastapi uvicorn beautifulsoup4 requests python-telegram-bot python-multipart
     startCommand: python backend/main.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN
@@ -16,8 +15,7 @@ services:
     env: python
     plan: free
     buildCommand: |
-      python -m pip install --upgrade pip
-      pip install --use-deprecated=legacy-resolver -r requirements.txt
+      pip install fastapi uvicorn beautifulsoup4 requests python-telegram-bot python-multipart
     startCommand: python telegram_bot.py
     envVars:
       - key: TELEGRAM_BOT_TOKEN

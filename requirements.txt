@@ -12,3 +12,9 @@ aiohttp==3.9.1
 pydantic==2.5.0
 langdetect==1.0.9
 nltk==3.8.1
+# Add these to your existing requirements:
+python-telegram-bot==20.7
+aiohttp==3.9.1
+python-dotenv==1.0.0
+httpx==0.25.0
+asyncio==3.4.3

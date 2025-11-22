@@ -67,3 +67,47 @@ async def add_test_page():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+# Add this endpoint to your existing main.py
+@app.post("/api/v1/add-page")
+async def add_page(page_data: dict):
+    """Add a page directly (for testing)"""
+    pages.append(page_data)
+    return {"message": "Page added directly", "page": page_data}
+
+@app.get("/api/v1/test-crawl")
+async def test_crawl(url: str = "https://httpbin.org/html"):
+    """Test crawling a URL directly"""
+    import requests
+    from bs4 import BeautifulSoup
+    import hashlib
+    import re
+    
+    try:
+        # Fetch the page
+        response = requests.get(url, timeout=10)
+        html = response.text
+        
+        # Extract content
+        soup = BeautifulSoup(html, 'html.parser')
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        title = soup.find('title')
+        title_text = title.text.strip() if title else url
+        
+        body = soup.find('body')
+        text = body.get_text() if body else ""
+        text = re.sub(r'\s+', ' ', text)
+        
+        page_data = {
+            'url': url,
+            'title': title_text,
+            'content': text[:500],  # First 500 chars
+            'hash': hashlib.sha256(text.encode()).hexdigest()
+        }
+        
+        pages.append(page_data)
+        return {"message": "Test crawl successful", "page": page_data}
+        
+    except Exception as e:
+        return {"error": str(e)}

@@ -15,3 +15,10 @@ services:
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+
+  - type: worker
+    name: scrapai-crawler
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python workers/crawler_worker.py

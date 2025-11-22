@@ -111,3 +111,47 @@ async def test_crawl(url: str = "https://httpbin.org/html"):
         
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/api/v1/test-crawl-direct")
+async def test_crawl_direct(url: str = "https://httpbin.org/html"):
+    """Test crawling directly - TEMPORARY"""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        import hashlib
+        
+        response = requests.get(url, timeout=10)
+        html = response.text
+        
+        soup = BeautifulSoup(html, 'html.parser')
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        title = soup.find('title')
+        title_text = title.text.strip() if title else "No Title"
+        
+        # Get meaningful content
+        body = soup.find('body')
+        if body:
+            # Try to find article content
+            article = body.find('article') or body.find('main') or body
+            text = article.get_text(separator=' ', strip=True)
+        else:
+            text = "No content found"
+        
+        # Clean text
+        import re
+        text = re.sub(r'\s+', ' ', text)
+        
+        page_data = {
+            'url': url,
+            'title': title_text,
+            'content': text[:1000],  # First 1000 chars
+            'hash': hashlib.sha256(text.encode()).hexdigest()
+        }
+        
+        pages.append(page_data)
+        return {"success": True, "page": page_data}
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}

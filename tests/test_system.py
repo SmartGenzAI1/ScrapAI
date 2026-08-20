@@ -4,6 +4,14 @@ Tests chunking, local vectorizer, BM25, hybrid ranking, extractive QA,
 database operations, link filtering, and API routes with zero external API dependencies.
 """
 
+import sys
+from pathlib import Path
+
+# Ensure root directory is on sys.path in all test runner environments
+root_dir = Path(__file__).resolve().parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
 import asyncio
 import pytest
 from fastapi.testclient import TestClient

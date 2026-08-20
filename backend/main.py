@@ -1,391 +1,339 @@
+import asyncio
+import logging
+import os
+import sys
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Add project root to sys.path
+root_dir = Path(__file__).resolve().parent.parent
+if str(root_dir) not in sys.path:
+    sys.path.insert(0, str(root_dir))
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
-from typing import List, Optional
-import asyncio
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import uvicorn
 
-app = FastAPI(title="ScrapAI")
+from backend.config import config
+from backend.api.routes import router as api_router
+from workers.pipeline_manager import pipeline_manager
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger("scrapai")
+
+# Background worker loop task
+_background_task = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start unified background pipeline manager if enabled
+    global _background_task
+    if config.server.enable_background_workers:
+        logger.info("⚡ Launching integrated ScrapAI background pipeline task...")
+        _background_task = asyncio.create_task(
+            pipeline_manager.run_pipeline_loop(poll_interval=float(config.server.worker_interval))
+        )
+    yield
+    # Shutdown: Stop pipeline manager
+    if _background_task:
+        logger.info("🛑 Stopping background pipeline task...")
+        pipeline_manager.stop()
+        _background_task.cancel()
+        try:
+            await _background_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(
+    title="ScrapAI",
+    description="Autonomous Web Crawling, Chunking, Embedding & Semantic Search Platform (100% Offline / Zero-API Ready)",
+    version="2.0-HT",
+    lifespan=lifespan
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Add this Pydantic model for request validation
-class CrawlRequest(BaseModel):
-    urls: List[str]
+# Mount API routes
+app.include_router(api_router)
 
-# Import database client
-from backend.database.client import DatabaseClient
-db_client = DatabaseClient()
+# Mount frontend dist static files if built
+frontend_dist_path = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if frontend_dist_path.exists() and (frontend_dist_path / "index.html").exists():
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist_path / "assets")), name="assets")
 
-@app.get("/", response_class=HTMLResponse)
-async def root():
-    """Serve a simple frontend interface"""
-    html_content = """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>ScrapAI - Web Crawling & Semantic Search</title>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
-            .container { max-width: 800px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-            h1 { color: #2c3e50; text-align: center; }
-            .section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
-            .form-group { margin: 15px 0; }
-            label { display: block; margin-bottom: 5px; font-weight: bold; }
-            input[type="text"], input[type="url"] { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-            button { background-color: #3498db; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
-            button:hover { background-color: #2980b9; }
-            button:disabled { background-color: #95a5a6; cursor: not-allowed; }
-            .result { background: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 4px; border-left: 4px solid #3498db; }
-            .stats { display: flex; justify-content: space-around; text-align: center; margin: 20px 0; }
-            .stat-item { flex: 1; }
-            .stat-number { font-size: 2em; font-weight: bold; color: #2c3e50; }
-            .stat-label { color: #7f8c8d; text-transform: uppercase; font-size: 0.9em; }
-            #results-container { margin-top: 20px; }
-            .loading { display: none; text-align: center; padding: 20px; color: #7f8c8d; }
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <h1>🕷️ ScrapAI</h1>
-            <p style="text-align: center; color: #7f8c8d;">AI-Powered Distributed Web Crawling, Scraping, Embedding & Semantic Search Platform</p>
-            
-            <div class="stats" id="stats-container">
-                <div class="stat-item">
-                    <div class="stat-number" id="pages-count">0</div>
-                    <div class="stat-label">Pages Indexed</div>
+    @app.get("/", response_class=FileResponse)
+    async def serve_react_app():
+        return FileResponse(str(frontend_dist_path / "index.html"))
+else:
+    @app.get("/", response_class=HTMLResponse)
+    async def root_view():
+        """Cyberpunk Unified Web UI fallback if frontend is not built"""
+        html_content = """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>ScrapAI // Cyber Master Terminal</title>
+            <style>
+                :root {
+                    --bg: #07090e;
+                    --panel: #0d121d;
+                    --border: #1a253b;
+                    --cyan: #00f2fe;
+                    --green: #00ff88;
+                    --purple: #8a2be2;
+                    --text: #e2e8f0;
+                    --muted: #64748b;
+                }
+                * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+                body { background: var(--bg); color: var(--text); padding: 2rem; min-height: 100vh; }
+                .header { max-width: 1100px; margin: 0 auto 2rem; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+                .title { font-size: 1.6rem; font-weight: 800; color: var(--cyan); letter-spacing: 1px; }
+                .badges { display: flex; gap: 1rem; font-size: 0.85rem; font-family: monospace; }
+                .badge { background: var(--panel); border: 1px solid var(--border); padding: 0.35rem 0.75rem; border-radius: 4px; }
+                .badge span { font-weight: bold; color: var(--green); }
+                .container { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+                .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; }
+                .full-width { grid-column: span 2; }
+                h2 { font-size: 1.15rem; margin-bottom: 1rem; color: var(--cyan); display: flex; align-items: center; gap: 0.5rem; }
+                input, textarea { width: 100%; background: #05070a; border: 1px solid var(--border); color: var(--text); padding: 0.75rem 1rem; border-radius: 6px; font-size: 0.95rem; margin-bottom: 1rem; outline: none; }
+                input:focus, textarea:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,242,254,0.15); }
+                button { background: linear-gradient(135deg, #00f2fe, #4facfe); border: none; color: #000; font-weight: bold; padding: 0.75rem 1.5rem; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+                button:hover { opacity: 0.9; transform: translateY(-1px); }
+                .answer-box { background: rgba(0, 242, 254, 0.04); border: 1px solid rgba(0, 242, 254, 0.2); border-radius: 6px; padding: 1rem; margin-top: 1rem; font-size: 0.95rem; line-height: 1.6; }
+                .answer-box strong { color: var(--green); }
+                .results-list { margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem; max-height: 400px; overflow-y: auto; }
+                .result-item { background: #080c14; border: 1px solid var(--border); padding: 1rem; border-radius: 6px; }
+                .result-item h3 { font-size: 1rem; color: var(--cyan); margin-bottom: 0.25rem; }
+                .result-item small { color: var(--muted); display: block; margin-bottom: 0.5rem; font-family: monospace; }
+                .result-item p { font-size: 0.88rem; color: #94a3b8; }
+                .score-pill { display: inline-block; background: rgba(0, 255, 136, 0.1); color: var(--green); font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+                .terminal-log { background: #030407; font-family: monospace; font-size: 0.85rem; padding: 1rem; border-radius: 6px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border); color: #38bdf8; }
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <div>
+                    <div class="title">🕷️ ScrapAI // HYBRID INTELLIGENCE</div>
+                    <p style="color: var(--muted); font-size: 0.85rem; margin-top: 0.25rem;">Autonomous Web Crawling, Chunking, Local Semantic Search & Extractive QA</p>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-number" id="queue-count">0</div>
-                    <div class="stat-label">In Queue</div>
-                </div>
-                <div class="stat-item">
-                    <div class="stat-number" id="chunks-count">0</div>
-                    <div class="stat-label">Text Chunks</div>
+                <div class="badges">
+                    <div class="badge">PAGES: <span id="stat-pages">0</span></div>
+                    <div class="badge">QUEUED: <span id="stat-queue">0</span></div>
+                    <div class="badge">CHUNKS: <span id="stat-chunks">0</span></div>
+                    <div class="badge">ENGINE: <span>OFFLINE-READY</span></div>
                 </div>
             </div>
-            
-            <div class="section">
-                <h2>🌐 Crawl a Website</h2>
-                <div class="form-group">
-                    <label for="url-input">Enter URL to crawl:</label>
-                    <input type="url" id="url-input" placeholder="https://example.com" />
-                </div>
-                <button id="crawl-btn">Add to Crawl Queue</button>
-                <div id="crawl-result" class="result" style="display: none;"></div>
-                <div id="crawl-loading" class="loading">Adding to queue...</div>
-            </div>
-            
-            <div class="section">
-                <h2>🔍 Search Content</h2>
-                <div class="form-group">
-                    <label for="search-input">Search for content:</label>
-                    <input type="text" id="search-input" placeholder="Enter search terms..." />
-                </div>
-                <button id="search-btn">Search</button>
-                <div id="search-result" class="result" style="display: none;"></div>
-                <div id="search-loading" class="loading">Searching...</div>
-                <div id="results-container"></div>
-            </div>
-            
-            <div class="section">
-                <h2>⚡ Quick Actions</h2>
-                <button id="test-page-btn">Add Test Page</button>
-                <button id="refresh-stats-btn">Refresh Statistics</button>
-                <div id="quick-result" class="result" style="display: none;"></div>
-            </div>
-        </div>
 
-        <script>
-            // Update statistics
-            async function updateStats() {
-                try {
-                    const response = await fetch('/api/v1/stats');
-                    const stats = await response.json();
-                    document.getElementById('pages-count').textContent = stats.pages || 0;
-                    document.getElementById('queue-count').textContent = stats.queued || 0;
-                    document.getElementById('chunks-count').textContent = stats.chunks || 0;
-                } catch (error) {
-                    console.error('Error fetching stats:', error);
+            <div class="container">
+                <!-- Target Acquisition -->
+                <div class="card">
+                    <h2>🎯 Target Ingestion</h2>
+                    <input type="url" id="crawl-url" placeholder="https://example.com" />
+                    <div style="display: flex; gap: 0.5rem;">
+                        <button onclick="queueTarget()">Enqueue Target</button>
+                        <button onclick="crawlDirect()" style="background: transparent; border: 1px solid var(--cyan); color: var(--cyan);">Instant Crawl</button>
+                    </div>
+                    <div id="crawl-status" style="margin-top: 1rem; font-size: 0.85rem; color: var(--green);"></div>
+                </div>
+
+                <!-- Live Pipeline Telemetry -->
+                <div class="card">
+                    <h2>📡 Pipeline Telemetry</h2>
+                    <div class="terminal-log" id="telemetry-log">
+                        [INIT] ScrapAI Execution Engine v2.0 Active<br>
+                        [READY] Local Vectorizer & BM25 Ready<br>
+                        [READY] Standalone Zero-API Mode Armed
+                    </div>
+                    <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+                        <button onclick="triggerPipeline()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">Run Pipeline Step</button>
+                        <button onclick="fetchStats()" style="padding: 0.4rem 0.8rem; font-size: 0.8rem; background: transparent; border: 1px solid var(--border); color: var(--muted);">Refresh</button>
+                    </div>
+                </div>
+
+                <!-- Semantic Search & Reasoning -->
+                <div class="card full-width">
+                    <h2>🔍 Hybrid Semantic Search & Extractive QA</h2>
+                    <div style="display: flex; gap: 0.5rem;">
+                        <input type="text" id="search-query" placeholder="Ask a question or enter keywords (e.g. 'What is the main topic?')..." />
+                        <button onclick="executeSearch()" style="white-space: nowrap;">Search Vault</button>
+                        <button onclick="executeAsk()" style="white-space: nowrap; background: linear-gradient(135deg, #00ff88, #00f2fe);">AI Answer</button>
+                    </div>
+
+                    <div id="answer-container" style="display: none;" class="answer-box">
+                        <strong>🤖 Synthesized Extractive Answer:</strong>
+                        <div id="answer-text" style="margin-top: 0.5rem;"></div>
+                        <div id="answer-sources" style="margin-top: 0.75rem; font-size: 0.8rem; color: var(--muted);"></div>
+                    </div>
+
+                    <div class="results-list" id="results-list"></div>
+                </div>
+            </div>
+
+            <script>
+                function log(msg) {
+                    const el = document.getElementById('telemetry-log');
+                    const ts = new Date().toISOString().substring(11, 19);
+                    el.innerHTML += `<div>[${ts}] ${msg}</div>`;
+                    el.scrollTop = el.scrollHeight;
                 }
-            }
-            
-            // Crawl URL
-            document.getElementById('crawl-btn').addEventListener('click', async () => {
-                const urlInput = document.getElementById('url-input');
-                const url = urlInput.value.trim();
-                
-                if (!url) {
-                    alert('Please enter a URL');
-                    return;
+
+                async function fetchStats() {
+                    try {
+                        const res = await fetch('/api/v1/stats');
+                        if (res.ok) {
+                            const data = await res.json();
+                            document.getElementById('stat-pages').textContent = data.pages || 0;
+                            document.getElementById('stat-queue').textContent = data.queued || 0;
+                            document.getElementById('stat-chunks').textContent = data.chunks || 0;
+                        }
+                    } catch(e) {}
                 }
-                
-                const crawlBtn = document.getElementById('crawl-btn');
-                const crawlResult = document.getElementById('crawl-result');
-                const crawlLoading = document.getElementById('crawl-loading');
-                
-                crawlBtn.disabled = true;
-                crawlLoading.style.display = 'block';
-                crawlResult.style.display = 'none';
-                
-                try {
-                    const response = await fetch('/api/v1/crawl', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ urls: [url] })
-                    });
-                    
-                    const result = await response.json();
-                    crawlResult.textContent = result.message || 'URL added to queue';
-                    crawlResult.style.display = 'block';
-                    urlInput.value = '';
-                    
-                    // Update stats after a short delay
-                    setTimeout(updateStats, 1000);
-                } catch (error) {
-                    crawlResult.textContent = 'Error: ' + error.message;
-                    crawlResult.style.display = 'block';
-                } finally {
-                    crawlBtn.disabled = false;
-                    crawlLoading.style.display = 'none';
-                }
-            });
-            
-            // Search content
-            document.getElementById('search-btn').addEventListener('click', async () => {
-                const searchInput = document.getElementById('search-input');
-                const query = searchInput.value.trim();
-                
-                if (!query) {
-                    alert('Please enter a search term');
-                    return;
-                }
-                
-                const searchBtn = document.getElementById('search-btn');
-                const searchResult = document.getElementById('search-result');
-                const searchLoading = document.getElementById('search-loading');
-                const resultsContainer = document.getElementById('results-container');
-                
-                searchBtn.disabled = true;
-                searchLoading.style.display = 'block';
-                searchResult.style.display = 'none';
-                resultsContainer.innerHTML = '';
-                
-                try {
-                    const response = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`);
-                    const results = await response.json();
-                    
-                    if (results.length === 0) {
-                        searchResult.textContent = 'No results found';
-                        searchResult.style.display = 'block';
-                    } else {
-                        searchResult.textContent = `Found ${results.length} result(s)`;
-                        searchResult.style.display = 'block';
-                        
-                        resultsContainer.innerHTML = '<h3>Search Results:</h3>';
-                        results.forEach((result, index) => {
-                            const resultDiv = document.createElement('div');
-                            resultDiv.className = 'result';
-                            resultDiv.innerHTML = `
-                                <strong>${index + 1}. ${result.title || 'No title'}</strong><br>
-                                <small>${result.url}</small><br>
-                                <p>${(result.content || '').substring(0, 200)}${(result.content || '').length > 200 ? '...' : ''}</p>
-                            `;
-                            resultsContainer.appendChild(resultDiv);
+
+                async function queueTarget() {
+                    const input = document.getElementById('crawl-url');
+                    const url = input.value.trim();
+                    if (!url) return alert('Enter a URL');
+                    log(`Enqueueing target: ${url}`);
+                    try {
+                        const res = await fetch('/api/v1/crawl', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ urls: [url], max_depth: 1 })
                         });
+                        const data = await res.json();
+                        document.getElementById('crawl-status').textContent = data.message;
+                        input.value = '';
+                        log(`Target accepted into queue`);
+                        fetchStats();
+                    } catch(e) {
+                        log(`Error: ${e.message}`);
                     }
-                } catch (error) {
-                    searchResult.textContent = 'Error: ' + error.message;
-                    searchResult.style.display = 'block';
-                } finally {
-                    searchBtn.disabled = false;
-                    searchLoading.style.display = 'none';
                 }
-            });
-            
-            // Add test page
-            document.getElementById('test-page-btn').addEventListener('click', async () => {
-                const quickResult = document.getElementById('quick-result');
-                const testPageBtn = document.getElementById('test-page-btn');
-                
-                testPageBtn.disabled = true;
-                quickResult.style.display = 'none';
-                
-                try {
-                    const response = await fetch('/api/v1/add-test-page', {
-                        method: 'POST'
+
+                async function crawlDirect() {
+                    const input = document.getElementById('crawl-url');
+                    const url = input.value.trim();
+                    if (!url) return alert('Enter a URL');
+                    log(`Executing direct crawl: ${url}...`);
+                    try {
+                        const res = await fetch('/api/v1/crawl/direct', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ url })
+                        });
+                        const data = await res.json();
+                        log(`Direct crawl complete: ${data.title || url} (${data.word_count || 0} words)`);
+                        input.value = '';
+                        fetchStats();
+                    } catch(e) {
+                        log(`Direct crawl error: ${e.message}`);
+                    }
+                }
+
+                async function triggerPipeline() {
+                    log('Triggering pipeline processing step...');
+                    try {
+                        const res = await fetch('/api/v1/pipeline/run', { method: 'POST' });
+                        const data = await res.json();
+                        log(`Pipeline cycle: Crawled: ${data.step_activity.crawled}, Chunked: ${data.step_activity.chunked}, Embedded: ${data.step_activity.embedded}`);
+                        fetchStats();
+                    } catch(e) {
+                        log(`Pipeline trigger error: ${e.message}`);
+                    }
+                }
+
+                async function executeSearch() {
+                    const q = document.getElementById('search-query').value.trim();
+                    if (!q) return;
+                    log(`Searching: "${q}"...`);
+                    document.getElementById('answer-container').style.display = 'none';
+                    try {
+                        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}`);
+                        const results = await res.json();
+                        renderResults(results);
+                        log(`Search returned ${results.length} ranked records`);
+                    } catch(e) {
+                        log(`Search error: ${e.message}`);
+                    }
+                }
+
+                async function executeAsk() {
+                    const q = document.getElementById('search-query').value.trim();
+                    if (!q) return;
+                    log(`Synthesizing extractive reasoning for: "${q}"...`);
+                    try {
+                        const res = await fetch('/api/v1/query/answer', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ query: q })
+                        });
+                        const data = await res.json();
+                        
+                        document.getElementById('answer-container').style.display = 'block';
+                        document.getElementById('answer-text').innerHTML = data.answer;
+                        
+                        let sourcesHtml = 'Sources: ';
+                        if (data.sources && data.sources.length) {
+                            sourcesHtml += data.sources.map(s => `<a href="${s.url}" target="_blank" style="color: var(--cyan); margin-right: 8px;">[${s.citation_id}] ${s.title || s.url}</a>`).join('');
+                        } else {
+                            sourcesHtml += 'No sources found.';
+                        }
+                        document.getElementById('answer-sources').innerHTML = sourcesHtml;
+                        
+                        renderResults(data.results || []);
+                        log(`Answer synthesized with ${data.sources?.length || 0} citations`);
+                    } catch(e) {
+                        log(`QA error: ${e.message}`);
+                    }
+                }
+
+                function renderResults(results) {
+                    const list = document.getElementById('results-list');
+                    list.innerHTML = '';
+                    if (!results || !results.length) {
+                        list.innerHTML = '<div style="color: var(--muted); padding: 1rem; text-align: center;">No matching documents in Vault. Crawl some pages first.</div>';
+                        return;
+                    }
+                    results.forEach(r => {
+                        const item = document.createElement('div');
+                        item.className = 'result-item';
+                        item.innerHTML = `
+                            <h3>${r.title || 'Untitled Document'} <span class="score-pill">Score: ${r.score}</span></h3>
+                            <small>${r.url}</small>
+                            <p>${r.snippet || r.content || ''}</p>
+                        `;
+                        list.appendChild(item);
                     });
-                    
-                    const result = await response.json();
-                    quickResult.textContent = result.message || 'Test page added';
-                    quickResult.style.display = 'block';
-                    
-                    // Update stats
-                    setTimeout(updateStats, 1000);
-                } catch (error) {
-                    quickResult.textContent = 'Error: ' + error.message;
-                    quickResult.style.display = 'block';
-                } finally {
-                    testPageBtn.disabled = false;
                 }
-            });
-            
-            // Refresh stats
-            document.getElementById('refresh-stats-btn').addEventListener('click', updateStats);
-            
-            // Enter key to submit forms
-            document.getElementById('url-input').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') document.getElementById('crawl-btn').click();
-            });
-            
-            document.getElementById('search-input').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') document.getElementById('search-btn').click();
-            });
-            
-            // Initial stats load
-            updateStats();
-        </script>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
 
-# Status API endpoint (moved from root)
-@app.get("/api/v1/status")
-async def get_status():
-    """Get API status"""
-    return {"message": "ScrapAI API Running", "status": "online"}
+                setInterval(fetchStats, 3000);
+                fetchStats();
+            </script>
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html_content)
 
-# FIXED: Use the Pydantic model
-@app.post("/api/v1/crawl")
-async def crawl_urls(request: CrawlRequest):
-    """Add URLs to crawl queue"""
-    added_count = 0
-    for url in request.urls:
-        if await db_client.add_to_queue(url):
-            added_count += 1
-    stats = await db_client.get_stats()
-    return {"message": f"Added {added_count} URLs to queue", "queued": stats["queued"]}
-
-@app.get("/api/v1/stats")
-async def get_stats():
-    """Get basic stats"""
-    return await db_client.get_stats()
-
-@app.get("/api/v1/search")
-async def search_content(q: str = "", limit: int = 10):
-    """Search content"""
-    results = await db_client.search_content(q, limit)
-    return results
-
-# ADD THIS: Simple endpoint to add a single page for testing
-@app.post("/api/v1/add-test-page")
-async def add_test_page():
-    """Add a test page to see if search works"""
-    test_page = {
-        "url": "https://example.com",
-        "title": "Example Domain",
-        "content": "This domain is for use in illustrative examples in documents.",
-        "hash": "test123"
-    }
-    page_id = await db_client.save_page(test_page)
-    return {"message": "Test page added", "page_id": page_id}
-
-@app.post("/api/v1/add-page")
-async def add_page(page_data: dict):
-    """Add a page directly (for testing)"""
-    page_id = await db_client.save_page(page_data)
-    return {"message": "Page added directly", "page_id": page_id}
-
-@app.get("/api/v1/test-crawl")
-async def test_crawl(url: str = "https://httpbin.org/html"):
-    """Test crawling a URL directly"""
-    import requests
-    from bs4 import BeautifulSoup
-    import hashlib
-    import re
-    
-    try:
-        # Fetch the page
-        response = requests.get(url, timeout=10)
-        html = response.text
-        
-        # Extract content
-        soup = BeautifulSoup(html, 'html.parser')
-        for script in soup(["script", "style"]):
-            script.decompose()
-        
-        title = soup.find('title')
-        title_text = title.text.strip() if title else url
-        
-        body = soup.find('body')
-        text = body.get_text() if body else ""
-        text = re.sub(r'\s+', ' ', text)
-        
-        page_data = {
-            'url': url,
-            'title': title_text,
-            'content': text[:500],  # First 500 chars
-            'hash': hashlib.sha256(text.encode()).hexdigest()
-        }
-        
-        page_id = await db_client.save_page(page_data)
-        return {"message": "Test crawl successful", "page_id": page_id}
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-@app.post("/api/v1/test-crawl-direct")
-async def test_crawl_direct(url: str = "https://httpbin.org/html"):
-    """Test crawling directly"""
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-        import hashlib
-        
-        response = requests.get(url, timeout=10)
-        html = response.text
-        
-        soup = BeautifulSoup(html, 'html.parser')
-        for script in soup(["script", "style"]):
-            script.decompose()
-        
-        title = soup.find('title')
-        title_text = title.text.strip() if title else "No Title"
-        
-        # Get meaningful content
-        body = soup.find('body')
-        if body:
-            # Try to find article content
-            article = body.find('article') or body.find('main') or body
-            text = article.get_text(separator=' ', strip=True)
-        else:
-            text = "No content found"
-        
-        # Clean text
-        import re
-        text = re.sub(r'\s+', ' ', text)
-        
-        page_data = {
-            'url': url,
-            'title': title_text,
-            'content': text[:1000],  # First 1000 chars
-            'hash': hashlib.sha256(text.encode()).hexdigest()
-        }
-        
-        page_id = await db_client.save_page(page_data)
-        return {"success": True, "page_id": page_id}
-        
-    except Exception as e:
-        return {"success": False, "error": str(e)}
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "backend.main:app",
+        host=config.server.host,
+        port=config.server.port,
+        reload=False
+    )

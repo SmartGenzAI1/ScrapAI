@@ -33,6 +33,14 @@ class LocalSemanticVectorizer:
     def __init__(self, dimension: int = 128):
         self.dimension = dimension
         
+    STOPWORDS = {
+        'a', 'an', 'the', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
+        'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'be',
+        'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will',
+        'would', 'shall', 'should', 'can', 'could', 'may', 'might', 'must',
+        'it', 'its', 'this', 'that', 'these', 'those', 'which', 'who', 'whom'
+    }
+
     def _tokenize(self, text: str) -> List[str]:
         if not text:
             return []
@@ -41,11 +49,11 @@ class LocalSemanticVectorizer:
         return tokens
 
     def _hash_to_index(self, token: str, dim: int) -> int:
-        """Deterministic string hash to feature index"""
+        """Deterministic 32-bit FNV-1a string hash to feature index"""
         h = 2166136261
         for ch in token:
-            h = (h ^ ord(ch)) * 16777619
-        return abs(h) % dim
+            h = ((h ^ ord(ch)) * 16777619) & 0xFFFFFFFF
+        return (h & 0x7FFFFFFF) % dim
 
     def encode(self, texts: List[str]) -> List[List[float]]:
         """Encode a list of texts into dense normalized vector representations"""
@@ -64,9 +72,10 @@ class LocalSemanticVectorizer:
             # Token unigrams and character 3-grams for semantic & subword matching
             features = []
             for token in tokens:
-                features.append((token, 1.0))
+                weight = 0.15 if token in self.STOPWORDS else 1.0
+                features.append((token, weight))
                 # Subwords / ngrams for capturing morphology
-                if len(token) >= 3:
+                if len(token) >= 3 and token not in self.STOPWORDS:
                     for i in range(len(token) - 2):
                         features.append((token[i:i+3], 0.35))
                         

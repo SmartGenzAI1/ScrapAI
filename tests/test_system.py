@@ -1,7 +1,7 @@
 """
 Comprehensive Automated Test Suite for ScrapAI.
 Tests chunking, local vectorizer, BM25, hybrid ranking, extractive QA,
-database operations, and API routes with zero external API dependencies.
+database operations, link filtering, and API routes with zero external API dependencies.
 """
 
 import asyncio
@@ -34,7 +34,6 @@ def test_chunker_sentences():
     
     assert len(chunks) >= 2
     assert all(len(c.text) > 0 for c in chunks)
-    # Check that sentences aren't mangled
     assert any("Artificial intelligence" in c.text for c in chunks)
 
 
@@ -46,6 +45,13 @@ def test_chunker_fixed_size():
     assert len(chunks) >= 2
     assert chunks[0].index == 0
     assert chunks[1].index == 1
+
+
+def test_chunker_empty_input():
+    chunker = TextChunker()
+    assert chunker.chunk_by_sentences("") == []
+    assert chunker.chunk_by_sentences("   ") == []
+    assert chunker.chunk_by_fixed_size("") == []
 
 
 # ---------------- 2. Semantic & Search Engine Tests ----------------
@@ -63,12 +69,23 @@ def test_local_vectorizer():
     assert len(vectors[0]) == 64
     assert len(vectors[1]) == 64
     
-    # Compute similarities
     sim_tech = cosine_similarity(vectors[0], vectors[1])
     sim_unrelated = cosine_similarity(vectors[0], vectors[2])
     
     assert 0.0 <= sim_tech <= 1.0
     assert 0.0 <= sim_unrelated <= 1.0
+
+
+def test_vectorizer_edge_cases():
+    vectorizer = LocalSemanticVectorizer(dimension=64)
+    empty_vectors = vectorizer.encode(["", "   ", "a"])
+    assert len(empty_vectors) == 3
+    assert len(empty_vectors[0]) == 64
+    
+    # Cosine similarity edge cases (zero division / mismatched dimensions)
+    assert cosine_similarity([], []) == 0.0
+    assert cosine_similarity([0.0]*64, [0.0]*64) == 0.0
+    assert cosine_similarity([1.0]*64, [1.0]*32) == 0.0
 
 
 def test_bm25_engine():
@@ -136,11 +153,17 @@ def test_extractive_qa_answer():
     assert answer_res["confidence"] > 0.4
 
 
+def test_extractive_qa_empty_candidates():
+    engine = LocalSemanticEngine(dimension=64, use_neural=False)
+    answer_res = engine.generate_extractive_answer("Any query?", [])
+    assert "No indexed content matches" in answer_res["answer"]
+    assert answer_res["confidence"] == 0.0
+
+
 # ---------------- 3. Database Operations Tests ----------------
 
 @pytest.mark.asyncio
 async def test_database_lifecycle():
-    # Use in-memory SQLite for test
     db = DatabaseClient(database_url="sqlite:///:memory:")
     
     # 1. Queue operations
@@ -206,6 +229,7 @@ def test_html_cleaning_and_extraction():
             <h1>Main Article Heading</h1>
             <p>This is the first paragraph of clean extracted text content.</p>
             <p>Here is a link to <a href="https://example.com/page2">Page 2</a>.</p>
+            <p>Here is a binary file to ignore: <a href="https://example.com/photo.jpg">Photo</a></p>
         </article>
         <footer>Copyright 2026</footer>
         <script>console.log('noise');</script>
@@ -222,6 +246,7 @@ def test_html_cleaning_and_extraction():
     assert "console.log" not in extracted["content"]
     assert "Copyright 2026" not in extracted["content"]
     assert "https://example.com/page2" in extracted["links"]
+    assert "https://example.com/photo.jpg" not in extracted["links"]
     assert extracted["word_count"] > 5
     assert len(extracted["content_hash"]) == 64
 

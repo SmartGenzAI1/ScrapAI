@@ -155,6 +155,14 @@ class LightweightCrawler:
                           soup.find('meta', attrs={'property': 'article:author'})
             author = meta_author.get('content', '').strip() if meta_author else ''
 
+            IGNORED_EXTENSIONS = (
+                '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico',
+                '.pdf', '.zip', '.tar', '.gz', '.rar', '.7z',
+                '.exe', '.bin', '.dmg', '.iso',
+                '.mp3', '.mp4', '.avi', '.mov', '.webm', '.wav',
+                '.css', '.js', '.woff', '.woff2', '.ttf', '.eot'
+            )
+
             # Extract outgoing links before decomposing elements
             links = []
             parsed_base = urlparse(url)
@@ -167,7 +175,10 @@ class LightweightCrawler:
                 if full_url.startswith(('http://', 'https://')):
                     # Clean fragment
                     full_url = full_url.split('#')[0]
-                    links.append(full_url)
+                    parsed_link = urlparse(full_url)
+                    path_lower = parsed_link.path.lower()
+                    if not path_lower.endswith(IGNORED_EXTENSIONS):
+                        links.append(full_url)
 
             # Deduplicate links preserving order
             seen_links = set()

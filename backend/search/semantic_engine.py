@@ -11,6 +11,9 @@ import logging
 from typing import List, Dict, Any, Optional, Tuple
 from collections import Counter
 
+from backend.config import config
+from .reranker import get_reranker
+
 logger = logging.getLogger(__name__)
 
 # Try to import neural embedding model if available
@@ -242,7 +245,8 @@ class LocalSemanticEngine:
         self,
         query: str,
         candidates: List[Dict[str, Any]],
-        weights: Optional[Dict[str, float]] = None
+        weights: Optional[Dict[str, float]] = None,
+        rerank: bool = True
     ) -> List[Dict[str, Any]]:
         """
         Multi-signal hybrid ranker combining:
@@ -251,6 +255,7 @@ class LocalSemanticEngine:
         - Title Exact / Token Match
         - Domain Relevance
         - Freshness / Length
+        - Local FlashRank Neural Cross-Encoder Re-Ranking (Sub-15ms ONNX)
         """
         if not candidates:
             return []
@@ -334,7 +339,42 @@ class LocalSemanticEngine:
             })
             
         ranked_results.sort(key=lambda x: x["score"], reverse=True)
+
+        # Apply Neural Cross-Encoder Re-Ranking if requested and enabled
+        if rerank and config.rerank.enabled and len(ranked_results) > 1:
+            reranker = get_reranker(
+                model_name=config.rerank.model_name,
+                cache_dir=config.rerank.cache_dir,
+                score_weight=config.rerank.score_weight
+            )
+            ranked_results = reranker.rerank(
+                query=query,
+                candidates=ranked_results,
+                top_n=config.rerank.top_n,
+                blend_scores=True
+            )
+
         return ranked_results
+
+    def rerank_candidates(
+        self,
+        query: str,
+        candidates: List[Dict[str, Any]],
+        top_n: Optional[int] = None,
+        blend_scores: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Directly invoke the local FlashRank cross-encoder on a custom candidate list"""
+        reranker = get_reranker(
+            model_name=config.rerank.model_name,
+            cache_dir=config.rerank.cache_dir,
+            score_weight=config.rerank.score_weight
+        )
+        return reranker.rerank(
+            query=query,
+            candidates=candidates,
+            top_n=top_n or config.rerank.top_n,
+            blend_scores=blend_scores
+        )
 
     def generate_extractive_answer(
         self,

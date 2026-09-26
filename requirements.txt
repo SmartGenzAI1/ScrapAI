@@ -11,6 +11,7 @@ httpx>=0.25.0
 pytest>=7.4.0
 pytest-asyncio>=0.21.0
 python-telegram-bot>=20.0
+flashrank>=0.2.10
 
 # Optional Database & Vector DB Drivers (for production scaling)
 # psycopg2-binary>=2.9.0

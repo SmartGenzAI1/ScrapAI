@@ -12,11 +12,15 @@ ENV/
 
 # Testing & Cache
 .pytest_cache/
+.cache/
 .coverage
 htmlcov/
 
 # Databases & local stores
+*.db
 *.db-journal
+*.sqlite
+*.sqlite3
 chroma_db/
 data/
 

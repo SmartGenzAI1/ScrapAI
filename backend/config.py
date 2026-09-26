@@ -48,12 +48,21 @@ class ServerConfig:
     enable_background_workers: bool = os.getenv("ENABLE_BACKGROUND_WORKERS", "true").lower() in ("true", "1", "yes")
     worker_interval: int = int(os.getenv("WORKER_INTERVAL", "5"))
 
+@dataclass
+class RerankConfig:
+    enabled: bool = os.getenv("ENABLE_RERANK", "true").lower() in ("true", "1", "yes")
+    model_name: str = os.getenv("FLASHRANK_MODEL", "ms-marco-TinyBERT-L-2-v2")
+    cache_dir: Optional[str] = os.getenv("FLASHRANK_CACHE_DIR", None)
+    top_n: int = int(os.getenv("FLASHRANK_TOP_N", "20"))
+    score_weight: float = float(os.getenv("FLASHRANK_SCORE_WEIGHT", "0.70"))
+
 @dataclass 
 class Config:
     crawler: CrawlerConfig = field(default_factory=CrawlerConfig)
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
+    rerank: RerankConfig = field(default_factory=RerankConfig)
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     server: ServerConfig = field(default_factory=ServerConfig)
 

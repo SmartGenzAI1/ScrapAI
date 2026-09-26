@@ -55,7 +55,7 @@ pytest tests/ -v
 - **Zero External API Dependency Guarantee**: Core vectorization, search, chunking, and extractive QA features must work 100% locally without requiring external cloud AI or API keys.
 - **Type Hints & Docstrings**: Use Python type hints (`typing.List`, `typing.Dict`, `typing.Optional`) and descriptive docstrings.
 - **Clean Architecture**: Follow the separation of concerns:
-  - `backend/search/` for vectorization, BM25, and hybrid ranking algorithms.
+  - `backend/search/` for vectorization, BM25, FlashRank neural cross-encoder re-ranking, and hybrid ranking algorithms.
   - `backend/scraper/` for crawler logic, robots.txt, and HTML extraction.
   - `backend/database/` for SQLAlchemy models and SQL queries.
   - `workers/` for background queue consumers and pipeline supervisors.

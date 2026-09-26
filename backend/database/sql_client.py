@@ -568,15 +568,16 @@ class SQLClient:
         self,
         query: str,
         limit: int = 10,
-        domain: Optional[str] = None
+        domain: Optional[str] = None,
+        rerank: bool = True
     ) -> List[Dict[str, Any]]:
         """
-        Execute Hybrid Search (Semantic + BM25 + Ranking).
+        Execute Hybrid Search (Semantic + BM25 + FlashRank Neural Re-Ranking).
         Works 100% offline with zero external API calls.
         """
         start_time = time.time()
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(None, self._search_content_sync, query, limit, domain)
+        results = await loop.run_in_executor(None, self._search_content_sync, query, limit, domain, rerank)
         elapsed_ms = round((time.time() - start_time) * 1000, 2)
         
         await loop.run_in_executor(None, self._log_search_sync, query, len(results), elapsed_ms)
@@ -586,7 +587,8 @@ class SQLClient:
         self,
         query: str,
         limit: int = 10,
-        domain: Optional[str] = None
+        domain: Optional[str] = None,
+        rerank: bool = True
     ) -> List[Dict[str, Any]]:
         db = self.SessionLocal()
         try:
@@ -623,17 +625,19 @@ class SQLClient:
             if domain:
                 candidate_query = candidate_query.filter(Page.domain == domain)
 
+            candidate_query = candidate_query.order_by(desc(Page.crawl_time), desc(Page.id))
+
             tokens = [t for t in re.findall(r'\w+', clean_query.lower()) if len(t) > 2]
             if tokens:
                 filters = [Page.title.ilike(f"%{t}%") for t in tokens] + \
                           [Page.content.ilike(f"%{t}%") for t in tokens] + \
                           [Chunk.chunk_text.ilike(f"%{t}%") for t in tokens]
-                matching_rows = candidate_query.filter(or_(*filters)).limit(100).all()
+                matching_rows = candidate_query.filter(or_(*filters)).limit(250).all()
             else:
                 matching_rows = []
 
             if len(matching_rows) < 20:
-                all_rows = candidate_query.limit(100).all()
+                all_rows = candidate_query.limit(250).all()
                 seen_ids = {r.chunk_id or f"p_{r.page_id}" for r in matching_rows}
                 for r in all_rows:
                     cid = r.chunk_id or f"p_{r.page_id}"
@@ -665,7 +669,7 @@ class SQLClient:
                     'vector': r.vector
                 })
 
-            ranked = semantic_engine.hybrid_rank(clean_query, candidates)
+            ranked = semantic_engine.hybrid_rank(clean_query, candidates, rerank=rerank)
 
             unique_results = []
             seen_pages = set()
@@ -696,8 +700,8 @@ class SQLClient:
         finally:
             db.close()
 
-    async def query_and_answer(self, query: str, limit: int = 10) -> Dict[str, Any]:
-        results = await self.search_content(query, limit=limit)
+    async def query_and_answer(self, query: str, limit: int = 10, rerank: bool = True) -> Dict[str, Any]:
+        results = await self.search_content(query, limit=limit, rerank=rerank)
         answer_data = semantic_engine.generate_extractive_answer(query, results)
         return {
             "query": query,

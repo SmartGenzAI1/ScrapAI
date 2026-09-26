@@ -22,6 +22,8 @@ class CrawlRequest(BaseModel):
     depth: int = Field(0, description="Initial crawl depth")
     max_depth: int = Field(2, description="Maximum link traversal depth (0 for single page)")
 
+from backend.search.reranker import get_reranker
+
 class DirectCrawlRequest(BaseModel):
     url: str = Field(..., description="Single URL to crawl immediately")
 
@@ -29,10 +31,18 @@ class SearchRequest(BaseModel):
     query: str = Field(..., description="Search query string")
     limit: int = Field(10, description="Maximum number of results to return")
     domain: Optional[str] = Field(None, description="Optional domain filter")
+    rerank: bool = Field(True, description="Apply local FlashRank neural cross-encoder re-ranking")
 
 class AnswerRequest(BaseModel):
     query: str = Field(..., description="User question or inquiry")
     limit: int = Field(10, description="Maximum candidate chunks to consider")
+    rerank: bool = Field(True, description="Apply local FlashRank neural cross-encoder re-ranking")
+
+class RerankDirectRequest(BaseModel):
+    query: str = Field(..., description="Query to score candidates against")
+    candidates: List[Dict[str, Any]] = Field(..., description="List of candidate objects with 'text', 'chunk_text', or 'content'")
+    top_n: Optional[int] = Field(None, description="Number of top results to return")
+    blend_scores: bool = Field(True, description="Whether to blend with original score or output pure FlashRank score")
 
 class AddPageRequest(BaseModel):
     url: str
@@ -49,6 +59,7 @@ class AddPageRequest(BaseModel):
 @router.get("/health")
 async def get_status():
     """System health check & operational status"""
+    reranker = get_reranker()
     return {
         "status": "online",
         "service": "ScrapAI Platform",
@@ -56,6 +67,8 @@ async def get_status():
         "features": {
             "zero_api_semantic_search": True,
             "hybrid_ranking": True,
+            "flashrank_neural_reranking": reranker.is_available(),
+            "flashrank_model": reranker.model_name,
             "extractive_qa_reasoning": True,
             "autonomous_crawler": True
         }
@@ -137,11 +150,12 @@ async def clear_queue():
 async def search_content_get(
     q: str = Query("", description="Query string"),
     limit: int = Query(10, description="Max results"),
-    domain: Optional[str] = Query(None, description="Domain filter")
+    domain: Optional[str] = Query(None, description="Domain filter"),
+    rerank: bool = Query(True, description="Enable local FlashRank neural re-ranking")
 ):
-    """Execute Hybrid Semantic Search (GET)"""
+    """Execute Hybrid Semantic Search (GET) with FlashRank re-ranking"""
     try:
-        results = await db.search_content(q, limit=limit, domain=domain)
+        results = await db.search_content(q, limit=limit, domain=domain, rerank=rerank)
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -149,14 +163,39 @@ async def search_content_get(
 
 @router.post("/search")
 async def search_content_post(request: SearchRequest):
-    """Execute Hybrid Semantic Search (POST)"""
+    """Execute Hybrid Semantic Search (POST) with FlashRank re-ranking"""
     try:
         results = await db.search_content(
             query=request.query,
             limit=request.limit,
-            domain=request.domain
+            domain=request.domain,
+            rerank=request.rerank
         )
         return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/search/rerank")
+async def rerank_custom_candidates(request: RerankDirectRequest):
+    """
+    Directly re-rank a custom list of candidate text passages against a query
+    using the local FlashRank neural cross-encoder.
+    """
+    try:
+        reranker = get_reranker()
+        reranked = reranker.rerank(
+            query=request.query,
+            candidates=request.candidates,
+            top_n=request.top_n,
+            blend_scores=request.blend_scores
+        )
+        return {
+            "query": request.query,
+            "count": len(reranked),
+            "model": reranker.model_name,
+            "results": reranked
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -168,7 +207,7 @@ async def query_and_answer(request: AnswerRequest):
     Returns synthesized answer with source citations `[1]`, `[2]`.
     """
     try:
-        result = await db.query_and_answer(request.query, limit=request.limit)
+        result = await db.query_and_answer(request.query, limit=request.limit, rerank=request.rerank)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

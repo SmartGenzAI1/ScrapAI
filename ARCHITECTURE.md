@@ -30,14 +30,13 @@ flowchart TD
     end
 
     subgraph "Search & Extractive Reasoning Engine"
-        APIServer --> HybridSearch["Hybrid Search Engine"]
+        APIServer --> HybridSearch["Hybrid Search Engine (BM25 + Vectors)"]
         EmbeddingsTable --> HybridSearch
         PagesTable --> HybridSearch
-        HybridSearch --> BM25["Okapi BM25 Lexical Scorer"]
-        HybridSearch --> CosineSim["Subword Cosine Vector Scorer"]
-        HybridSearch --> Ranker["Multi-Signal Ranker"]
-        Ranker --> ExtractiveQA["Extractive QA & Citation Engine"]
+        HybridSearch --> FlashRankNode["⚡ FlashRank Neural Re-Ranker (Sub-15ms ONNX)"]
+        FlashRankNode --> ExtractiveQA["Extractive QA & Citation Engine"]
         ExtractiveQA --> Client
+        FlashRankNode --> Client
     end
 ```
 
@@ -63,18 +62,24 @@ $$\text{Sim}_{\text{vec}}(\hat{Q}, \hat{D}) = \hat{Q} \cdot \hat{D} = \sum_{i=1}
 
 ---
 
-## 3. Hybrid Multi-Signal Ranking Algorithm
+## 3. Hybrid Multi-Signal Ranking & Neural Re-Ranking Architecture
 
+ScrapAI implements a high-precision, low-latency **Two-Stage Retrieval & Re-Ranking Architecture**:
+
+### Stage 1: Fast Multi-Signal Hybrid Retrieval
 Candidate documents are retrieved and evaluated across 5 weighted signals:
+$$\text{Score}_{\text{hybrid}} = w_1 \cdot S_{\text{vector}} + w_2 \cdot S_{\text{BM25}} + w_3 \cdot S_{\text{title}} + w_4 \cdot S_{\text{domain}} + w_5 \cdot S_{\text{freshness}}$$
 
-$$\text{Score}_{\text{final}} = w_1 \cdot S_{\text{vector}} + w_2 \cdot S_{\text{BM25}} + w_3 \cdot S_{\text{title}} + w_4 \cdot S_{\text{domain}} + w_5 \cdot S_{\text{freshness}}$$
-
-### Default Weights:
 - **Vector Similarity ($w_1 = 0.45$)**: Semantic concept matching.
 - **BM25 Keyword Match ($w_2 = 0.25$)**: Exact term salience.
 - **Title Token Overlap ($w_3 = 0.15$)**: Direct title relevance.
 - **Domain Authority ($w_4 = 0.10$)**: Root domain quality.
 - **Freshness & Length ($w_5 = 0.05$)**: Recency and content depth.
+
+### Stage 2: FlashRank Local Neural Cross-Encoder Re-Ranking (Sub-15ms ONNX)
+The top $N$ candidates from Stage 1 are passed through a local ONNX cross-encoder (`ms-marco-TinyBERT-L-2-v2` / `FlashRank`) to compute deep query-passage cross-attention scores $S_{\text{cross}}$:
+$$\text{Score}_{\text{final}} = (1 - \alpha) \cdot \text{Score}_{\text{hybrid}} + \alpha \cdot S_{\text{cross}}$$
+where $\alpha = 0.70$ (configurable via `FLASHRANK_SCORE_WEIGHT`).
 
 ---
 

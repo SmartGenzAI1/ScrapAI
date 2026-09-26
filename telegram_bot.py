@@ -109,7 +109,8 @@ Your offline-ready web scraping and semantic search companion.
                         url = r.get('url') or ''
                         snippet = r.get('snippet') or r.get('content') or ''
                         score = r.get('score', 0.0)
-                        text += f"*{i}. {title}* (Score: `{score}`)\n"
+                        fr_tag = f" | ⚡ FR: `{r.get('flashrank_score')}`" if r.get('flashrank_score') is not None else ""
+                        text += f"*{i}. {title}* (Score: `{score}`{fr_tag})\n"
                         text += f"🔗 `{url}`\n"
                         text += f"💬 _{snippet[:140]}..._\n\n"
                     await update.message.reply_text(text, parse_mode='Markdown')

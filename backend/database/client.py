@@ -39,11 +39,17 @@ class DatabaseClient:
     async def is_duplicate(self, content_hash: str) -> bool:
         return await self.client.is_duplicate(content_hash)
         
-    async def search_content(self, query: str, limit: int = 10, domain: Optional[str] = None) -> List[Dict[str, Any]]:
-        return await self.client.search_content(query, limit, domain)
+    async def search_content(
+        self,
+        query: str,
+        limit: int = 10,
+        domain: Optional[str] = None,
+        rerank: bool = True
+    ) -> List[Dict[str, Any]]:
+        return await self.client.search_content(query, limit, domain, rerank=rerank)
 
-    async def query_and_answer(self, query: str, limit: int = 10) -> Dict[str, Any]:
-        return await self.client.query_and_answer(query, limit)
+    async def query_and_answer(self, query: str, limit: int = 10, rerank: bool = True) -> Dict[str, Any]:
+        return await self.client.query_and_answer(query, limit, rerank=rerank)
         
     async def get_pages(self, skip: int = 0, limit: int = 50, domain: Optional[str] = None) -> List[Dict[str, Any]]:
         return await self.client.get_pages(skip, limit, domain)

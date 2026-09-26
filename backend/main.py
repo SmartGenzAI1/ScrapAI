@@ -157,6 +157,7 @@ else:
                     <div class="terminal-log" id="telemetry-log">
                         [INIT] ScrapAI Execution Engine v2.0 Active<br>
                         [READY] Local Vectorizer & BM25 Ready<br>
+                        [READY] ⚡ FlashRank Neural Re-Ranking: Armed (ONNX)<br>
                         [READY] Standalone Zero-API Mode Armed
                     </div>
                     <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
@@ -263,10 +264,10 @@ else:
                     log(`Searching: "${q}"...`);
                     document.getElementById('answer-container').style.display = 'none';
                     try {
-                        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}`);
+                        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(q)}&rerank=true`);
                         const results = await res.json();
                         renderResults(results);
-                        log(`Search returned ${results.length} ranked records`);
+                        log(`Search returned ${results.length} ranked records (⚡ FlashRank Re-ranked)`);
                     } catch(e) {
                         log(`Search error: ${e.message}`);
                     }
@@ -280,7 +281,7 @@ else:
                         const res = await fetch('/api/v1/query/answer', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({ query: q })
+                            body: JSON.stringify({ query: q, rerank: true })
                         });
                         const data = await res.json();
                         
@@ -312,8 +313,9 @@ else:
                     results.forEach(r => {
                         const item = document.createElement('div');
                         item.className = 'result-item';
+                        const frPill = r.flashrank_score !== undefined ? `<span class="score-pill" style="background: rgba(0, 242, 254, 0.2); color: #00f2fe; margin-left: 6px;">⚡ FlashRank: ${r.flashrank_score}</span>` : '';
                         item.innerHTML = `
-                            <h3>${r.title || 'Untitled Document'} <span class="score-pill">Score: ${r.score}</span></h3>
+                            <h3>${r.title || 'Untitled Document'} <span class="score-pill">Score: ${r.score}</span>${frPill}</h3>
                             <small>${r.url}</small>
                             <p>${r.snippet || r.content || ''}</p>
                         `;

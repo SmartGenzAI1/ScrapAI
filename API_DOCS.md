@@ -20,6 +20,8 @@ Returns service status, version, and feature capabilities.
   "features": {
     "zero_api_semantic_search": true,
     "hybrid_ranking": true,
+    "flashrank_neural_reranking": true,
+    "flashrank_model": "ms-marco-TinyBERT-L-2-v2",
     "extractive_qa_reasoning": true,
     "autonomous_crawler": true
   }
@@ -85,8 +87,8 @@ Purges all entries from the crawl queue.
 
 ### Search & Extractive QA
 
-#### `GET /api/v1/search?q={query}&limit={limit}&domain={domain}`
-Executes hybrid multi-signal search across indexed Vault documents.
+#### `GET /api/v1/search?q={query}&limit={limit}&domain={domain}&rerank={true|false}`
+Executes hybrid multi-signal search across indexed Vault documents with optional **FlashRank local neural cross-encoder re-ranking**.
 - **Response**:
 ```json
 [
@@ -97,12 +99,52 @@ Executes hybrid multi-signal search across indexed Vault documents.
     "url": "https://example.com/ai",
     "domain": "example.com",
     "snippet": "Artificial intelligence leverages machine learning models...",
-    "score": 0.89,
+    "score": 0.94,
+    "flashrank_score": 0.98,
+    "reranked": true,
     "semantic_score": 0.92,
     "bm25_score": 0.81,
     "hash": "e3b0c442..."
   }
 ]
+```
+
+#### `POST /api/v1/search/rerank`
+Directly re-ranks a custom list of candidate passages against a query using local FlashRank ONNX in sub-15ms.
+- **Request Body**:
+```json
+{
+  "query": "vector databases",
+  "candidates": [
+    {"id": "doc1", "text": "Cooking delicious pasta recipes."},
+    {"id": "doc2", "text": "Vector databases store dense embeddings for high-dimensional semantic search."}
+  ],
+  "blend_scores": false
+}
+```
+- **Response**:
+```json
+{
+  "query": "vector databases",
+  "count": 2,
+  "model": "ms-marco-TinyBERT-L-2-v2",
+  "results": [
+    {
+      "id": "doc2",
+      "text": "Vector databases store dense embeddings...",
+      "flashrank_score": 0.9982,
+      "score": 0.9982,
+      "reranked": true
+    },
+    {
+      "id": "doc1",
+      "text": "Cooking delicious pasta recipes.",
+      "flashrank_score": 0.0001,
+      "score": 0.0001,
+      "reranked": true
+    }
+  ]
+}
 ```
 
 #### `POST /api/v1/query/answer`
